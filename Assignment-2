@@ -1,0 +1,55 @@
+from flask import Flask, jsonify
+from collections import deque
+import requests
+import time
+
+app = Flask(__name__)
+
+WINDOW_SIZE = 10
+stored_numbers = deque(maxlen=WINDOW_SIZE)
+
+API_ENDPOINTS = {
+    'p': 'http://20.244.56.144/evaluation-service/primes',
+    'f': 'http://20.244.56.144/evaluation-service/fibo',
+    'e': 'http://20.244.56.144/evaluation-service/even',
+    'r': 'http://20.244.56.144/evaluation-service/rand'
+}
+
+def get_numbers_from_api(numberid):
+    try:
+        start = time.time()
+        response = requests.get(API_ENDPOINTS[numberid], timeout=0.5)
+        duration = time.time() - start
+        if response.status_code == 200 and duration <= 0.5:
+            return response.json().get("numbers", [])
+        return []
+    except Exception:
+        return []
+
+@app.route("/numbers/<numberid>")
+def get_numbers(numberid):
+    if numberid not in API_ENDPOINTS:
+        return jsonify({"error": "Invalid number ID"}), 400
+
+    prev_window = list(stored_numbers)
+
+    numbers = get_numbers_from_api(numberid)
+
+    for num in numbers:
+        if num not in stored_numbers:
+            stored_numbers.append(num)
+            if len(stored_numbers) > WINDOW_SIZE:
+                stored_numbers.popleft()
+
+    curr_window = list(stored_numbers)
+    avg = round(sum(curr_window) / len(curr_window), 2) if curr_window else 0.0
+
+    return jsonify({
+        "windowPrevState": prev_window,
+        "windowCurrState": curr_window,
+        "numbers": numbers,
+        "avg": avg
+    })
+
+if __name__ == "__main__":
+    app.run(port=9876, debug=True)
